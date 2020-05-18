@@ -1,6 +1,6 @@
   var request = require('request');
   var http = require("http");
-  var artistID = "7nqOGRxlXj7N2JYbgNEjYH";
+  var artistID = "3Nrfpe0tUJi4K4DXYWgMUX";
   var artistName = "";
   var albumID = [];
   var trackID = [];
@@ -54,12 +54,12 @@
     });
   }
 
-  function getAlbums(_callback) {
+  function getAlbums() {
     request.post(authOptions, function (error, response, body) {
       if (!error && response.statusCode === 200) {
         var token = body.access_token;
         var options = {
-          url: `https://api.spotify.com/v1/artists/${artistID}/albums`,
+          url: `https://api.spotify.com/v1/artists/${artistID}/albums?include_groups=album,single,appears_on,compilation&limit=50`,
           headers: {
             'Authorization': 'Bearer ' + token
           },
@@ -70,25 +70,26 @@
             for (let i = 0; i < body.items.length; i++) {
               albumID.push(body.items[i].id);
             }
+            setTimeout(function () {
+              getAlbumTracks();
+            }, 8000);
           } else {
             console.log("Get Album Error: " + error + " " + JSON.stringify(response, null, 4));
           }
-          getAlbumTracks();
         });
       } else {
         console.log("Post Albums Error: " + error + " " + JSON.stringify(response, null, 4));
       }
     });
-    _callback();
   }
 
   function getAlbumTracks() {
     request.post(authOptions, function (error, response, body) {
       if (!error && response.statusCode === 200) {
         var token = body.access_token;
-        for (const aID in albumID) {
+        for (var aID = 0; aID < albumID.length; aID++) {
           var options = {
-            url: `https://api.spotify.com/v1/albums/${albumID[aID]}/tracks`,
+            url: `https://api.spotify.com/v1/albums/${albumID[aID]}/tracks?limit=50`,
             headers: {
               'Authorization': 'Bearer ' + token
             },
@@ -96,15 +97,14 @@
           };
           request.get(options, function (error, response, body) {
             if (!error && response.statusCode === 200) {
-              for (let i = 0; i < body.items.length; i++) {
-                trackID.push(body.items[i].id);
-              }
+              body.items.forEach(function (item, i) {
+                trackID.push(item.id);
+              });
+              getTrackNameAndPopularity();
+              trackID = [];
             } else {
               console.log("Get Album Tracks Error: " + error + " " + JSON.stringify(response, null, 4));
             }
-            if (aID == albumID.length - 1) setTimeout(function () {
-              getTrackNameAndPopularity()
-            }, 2000);
           });
         }
       } else {
@@ -114,9 +114,9 @@
   }
 
   function getTrackNameAndPopularity() {
-    var groupedTrackIds = chunkID(trackID, 30);
+    var groupedTrackIds = chunkID(trackID, 49);
     request.post(authOptions, function (error, response, body) {
-      for (const tID in groupedTrackIds) {
+      for (var tID = 0; tID < 1; tID++) {
         if (!error && response.statusCode === 200) {
           var token = body.access_token;
           var options = {
@@ -130,7 +130,7 @@
           request.get(options, function (error, response, body) {
             if (!error && response.statusCode === 200) {
               for (var i = 0; i < body.tracks.length; i++) {
-                var trackName = body.tracks[i].name.replace("'", "&rsquo;");
+                var trackName = body.tracks[i].name;
                 var trackPopularity = body.tracks[i].popularity;
 
                 if (!(trackNameAndView.items.some(item => item.name == trackName)))
@@ -147,12 +147,13 @@
     });
   }
 
-  getAlbums(function () {
-    console.log("Done");
-  });
+  function sleep(millis) {
+    return new Promise(resolve => setTimeout(resolve, millis));
+  }
+
+  getAlbums();
 
   getArtist();
-
 
   http.createServer(function (request, response) {
     response.writeHead(200, {
