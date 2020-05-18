@@ -1,7 +1,9 @@
   var request = require('request');
   var http = require("http");
-  var artistID = "6yhD1KjhLxIETFF7vIRf8B";
+  var artistID = "7nqOGRxlXj7N2JYbgNEjYH";
+  var artistName = "";
   var albumID = [];
+  var trackID = [];
   var trackNameAndView = {
     "items": []
   };
@@ -24,7 +26,33 @@
     };
   }
 
-  const sleep = (waitTimeInMs) => new Promise(resolve => setTimeout(resolve, waitTimeInMs));
+  function chunkID(arr, chunkSize) {
+    // Taken directly from https://stackoverflow.com/questions/8495687/split-array-into-chunks
+    var R = [];
+    for (var i = 0, len = arr.length; i < len; i += chunkSize)
+      R.push(arr.slice(i, i + chunkSize));
+    return R;
+  }
+
+  function getArtist() {
+    request.post(authOptions, function (error, response, body) {
+      if (!error && response.statusCode === 200) {
+        var token = body.access_token;
+        var options = {
+          url: `https://api.spotify.com/v1/artists/${artistID}`,
+          headers: {
+            'Authorization': 'Bearer ' + token
+          },
+          json: true
+        };
+        request.get(options, function (error, response, body) {
+          if (!error && response.statusCode === 200) {
+            artistName = body.name;
+          }
+        });
+      }
+    });
+  }
 
   function getAlbums(_callback) {
     request.post(authOptions, function (error, response, body) {
@@ -47,6 +75,8 @@
           }
           getAlbumTracks();
         });
+      } else {
+        console.log("Post Albums Error: " + error + " " + JSON.stringify(response, null, 4));
       }
     });
     _callback();
@@ -56,10 +86,9 @@
     request.post(authOptions, function (error, response, body) {
       if (!error && response.statusCode === 200) {
         var token = body.access_token;
-
-        for (const iID in albumID) {
+        for (const aID in albumID) {
           var options = {
-            url: `https://api.spotify.com/v1/albums/${albumID[iID]}/tracks`,
+            url: `https://api.spotify.com/v1/albums/${albumID[aID]}/tracks`,
             headers: {
               'Authorization': 'Bearer ' + token
             },
@@ -68,36 +97,52 @@
           request.get(options, function (error, response, body) {
             if (!error && response.statusCode === 200) {
               for (let i = 0; i < body.items.length; i++) {
-                getTrackNameAndPopularity(body.items[i].id);
+                trackID.push(body.items[i].id);
               }
             } else {
               console.log("Get Album Tracks Error: " + error + " " + JSON.stringify(response, null, 4));
             }
+            if (aID == albumID.length - 1) setTimeout(function () {
+              getTrackNameAndPopularity()
+            }, 2000);
           });
         }
+      } else {
+        console.log("Post Album Tracks Error: " + error + " " + JSON.stringify(response, null, 4));
       }
     });
   }
 
-  function getTrackNameAndPopularity(individualID) {
+  function getTrackNameAndPopularity() {
+    var groupedTrackIds = chunkID(trackID, 30);
     request.post(authOptions, function (error, response, body) {
-      if (!error && response.statusCode === 200) {
-        var token = body.access_token;
-        var options = {
-          url: `https://api.spotify.com/v1/tracks/${individualID}`,
-          headers: {
-            'Authorization': 'Bearer ' + token
-          },
-          json: true
-        };
-        request.get(options, function (error, response, body) {
-          if (!error && response.statusCode === 200) {
-            if (!(trackNameAndView.items.some(item => item.name == body.name)))
-              trackNameAndView.items.push(makeCustomTrackFormat(body.name, body.popularity));
-          } else {
-            console.log("Get Track Names and Pop Error: " + error + " " + JSON.stringify(response, null, 4));
-          }
-        });
+      for (const tID in groupedTrackIds) {
+        if (!error && response.statusCode === 200) {
+          var token = body.access_token;
+          var options = {
+            url: `https://api.spotify.com/v1/tracks/?ids=${groupedTrackIds[tID].join(",")}`,
+            headers: {
+              'Authorization': 'Bearer ' + token
+            },
+            json: true
+          };
+
+          request.get(options, function (error, response, body) {
+            if (!error && response.statusCode === 200) {
+              for (var i = 0; i < body.tracks.length; i++) {
+                var trackName = body.tracks[i].name.replace("'", "&rsquo;");
+                var trackPopularity = body.tracks[i].popularity;
+
+                if (!(trackNameAndView.items.some(item => item.name == trackName)))
+                  trackNameAndView.items.push(makeCustomTrackFormat(trackName, trackPopularity));
+              }
+            } else {
+              console.log("Get Track Names and Pop Error: " + error + " " + JSON.stringify(response, null, 4));
+            }
+          });
+        } else {
+          console.log("Post Track Name and Pop Error: " + error + " " + JSON.stringify(response, null, 4));
+        }
       }
     });
   }
@@ -106,18 +151,24 @@
     console.log("Done");
   });
 
-  http.createServer(function (request, response) {
+  getArtist();
 
-    console.log(trackNameAndView);
+
+  http.createServer(function (request, response) {
+    response.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8"
+    });
 
     trackNameAndView.items.sort(function (a, b) {
       return b.popularity - a.popularity
     });
 
-    response.writeHead(200, {
-      "Content-Type": "text/html"
-    });
-    response.write(`<span id="testID">${JSON.stringify(trackNameAndView, null, 4)}</span> dnasdnasnda ${trackNameAndView.items.length}`);
+    response.write(`Getting Ranked Records of: ${artistName}<br>`);
+    response.write(`Total Unique Records: ${trackNameAndView.items.length} <br><br>`);
+
+    for (var i = 0; i < trackNameAndView.items.length; i++) {
+      response.write(`<span id="testID"> ${i + 1} - Popularity Score ${trackNameAndView.items[i].popularity} - ${trackNameAndView.items[i].name}</span><br>`);
+    }
     response.end();
 
   }).listen(8888);
