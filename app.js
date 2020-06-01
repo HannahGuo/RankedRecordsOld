@@ -1,6 +1,6 @@
   var request = require('request');
   var http = require("http");
-  var artistID = "47mIJdHORyRerp4os813jD";
+  var artistID = "3JsHnjpbhX4SnySpvpa9DK";
   var artistName = "";
   var trackNameAndView = {
     "items": []
@@ -17,10 +17,32 @@
     json: true
   };
 
+  //Troubleshooting Function
+  // getSong();
+  function getSong() {
+    request.post(authOptions, function (error, response, body) {
+      if (!error && response.statusCode === 200) {
+        var token = body.access_token;
+        var options = {
+          url: `https://api.spotify.com/v1/tracks/?ids=5tQajsiRlvDBfvrW31RMgA`,
+          headers: {
+            'Authorization': 'Bearer ' + token
+          },
+          json: true
+        };
+        request.get(options, function (error, response, body) {
+          if (!error && response.statusCode === 200) {
+            console.log(JSON.stringify(body, null, 4));
+          }
+        });
+      }
+    });
+  }
+
   function makeCustomTrackFormat(trackInfo) {
     var idSTR = "";
     trackInfo.forEach(function (item, i) {
-      if (!checkSongs(item.name)) idSTR += item.id + ",";
+      if (isProperSong(item.name)) idSTR += item.id + ",";
     });
 
     request.post(authOptions, function (error, response, body) {
@@ -36,8 +58,21 @@
         request.get(options, function (error, response, body) {
           if (!error && response.statusCode === 200) {
             body.tracks.forEach(function (item, i) {
+              if (trackNameAndView.items.some(myItem => myItem.name == item.name)) {
+                var strTitles = [];
+                trackNameAndView.items.forEach(function (itemObj, i) {
+                  strTitles.push(itemObj.name);
+                });
 
-              if (!(trackNameAndView.items.some(myItem => myItem.name == item.name))) {
+                var indexOfPrevEntry = strTitles.indexOf(item.name);
+
+                if (trackNameAndView.items[indexOfPrevEntry].popularity < item.popularity) {
+                  trackNameAndView.items[indexOfPrevEntry] = {
+                    name: item.name,
+                    popularity: item.popularity
+                  };
+                }
+              } else {
                 trackNameAndView.items.push({
                   name: item.name,
                   popularity: item.popularity
@@ -50,9 +85,9 @@
     });
   }
 
-  function checkSongs(track) {
+  function isProperSong(track) {
     var song = track.toString()
-    return song.includes("Commentary") || song.includes("Karaoke") || song.includes("Voice Memo");
+    return !(song.includes("Commentary") || song.includes("Karaoke") || song.includes("Voice Memo"));
   }
 
   function getArtist() {
@@ -75,13 +110,12 @@
     });
   }
 
-  function getAlbums() {
-    var offset = 0;
+  function getAlbums(offset) {
     request.post(authOptions, function (error, response, body) {
       if (!error && response.statusCode === 200) {
         var token = body.access_token;
         var options = {
-          url: `https://api.spotify.com/v1/artists/${artistID}/albums?include_groups=album,single,compilation&limit=50&offset=${50 * offset}`,
+          url: `https://api.spotify.com/v1/artists/${artistID}/albums?include_groups=album,single,compilation,appears_on&country=CA&limit=50&offset=${50 * offset}`,
           headers: {
             'Authorization': 'Bearer ' + token
           },
@@ -91,7 +125,15 @@
         request.get(options, function (error, response, body) {
           if (!error && response.statusCode === 200) {
             body.items.forEach(function (item, i) {
-              getAlbumTracks(item.id);
+              if (item.album_group == "appears_on") {
+                if (item.album_type == "single") {
+                  var isLast = i == body.items.length - 1;
+                  getAlbumTracks(item.id, isLast);
+                }
+              } else {
+                var isLast = i == body.items.length - 1;
+                getAlbumTracks(item.id, isLast);
+              }
             });
           } else {
             console.log("Get Album Error: " + error + " " + JSON.stringify(response, null, 4));
@@ -102,16 +144,19 @@
         console.log("Post Albums Error: " + error + " " + JSON.stringify(response, null, 4));
       }
     });
+    if (offset == 0) {
+      getAlbums(1);
+    }
   }
 
   var albumTracksIDs = [];
 
-  function getAlbumTracks(aID) {
+  function getAlbumTracks(aID, last) {
     request.post(authOptions, function (error, response, body) {
       if (!error && response.statusCode === 200) {
         var token = body.access_token;
         var options = {
-          url: `https://api.spotify.com/v1/albums/${aID}/tracks?limit=50`,
+          url: `https://api.spotify.com/v1/albums/${aID}/tracks?limit=50&country=CA`,
           headers: {
             'Authorization': 'Bearer ' + token
           },
@@ -125,7 +170,8 @@
                 id: item.id
               });
             });
-            if (albumTracksIDs.length > 35) {
+
+            if (albumTracksIDs.length > 30 || last) {
               makeCustomTrackFormat(albumTracksIDs);
               albumTracksIDs = [];
             }
@@ -139,7 +185,7 @@
     });
   }
 
-  getAlbums();
+  getAlbums(0);
 
   getArtist();
 
