@@ -1,6 +1,6 @@
   var request = require('request');
   var http = require("http");
-  var artistID = "3JsHnjpbhX4SnySpvpa9DK";
+  var artistID = "1McMsnEElThX1knmY4oliG";
   var artistName = "";
   var trackNameAndView = {
     "items": []
@@ -9,7 +9,7 @@
   var authOptions = {
     url: 'https://accounts.spotify.com/api/token',
     headers: {
-      'Authorization': 'Basic ' + (new Buffer.from("0bb76f3c5c634f2a87ee22115cca5ebf" + ':' + "0ad6b24acd504757bc73bb8986589354").toString('base64'))
+      'Authorization': 'Basic ' + (new Buffer.from(process.env.CLIENT_ID + ':' + process.env.CLIENT_SECRET).toString('base64'))
     },
     form: {
       grant_type: 'client_credentials'
